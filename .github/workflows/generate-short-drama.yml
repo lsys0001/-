@@ -1,0 +1,74 @@
+name: 自动生成 AI 短剧项目
+
+on:
+  workflow_dispatch:
+    inputs:
+      story_path:
+        description: "故事文件路径，必须位于 输入/故事/"
+        required: true
+        default: "输入/故事/示例故事.md"
+      episode:
+        description: "集号，例如 EP001"
+        required: true
+        default: "EP001"
+      target_seconds:
+        description: "单集目标时长（15-600 秒）"
+        required: true
+        default: "60"
+      aspect_ratio:
+        description: "画幅"
+        required: true
+        default: "9:16"
+      model:
+        description: "OpenAI 模型"
+        required: true
+        default: "gpt-5.5"
+
+concurrency:
+  group: short-drama-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 配置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 安装依赖
+        run: python -m pip install --requirement requirements.txt
+
+      - name: 生成五份短剧文档
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: >-
+          python scripts/generate_drama.py
+          --source "${{ inputs.story_path }}"
+          --episode "${{ inputs.episode }}"
+          --target-seconds "${{ inputs.target_seconds }}"
+          --aspect-ratio "${{ inputs.aspect_ratio }}"
+          --model "${{ inputs.model }}"
+
+      - name: 提交生成结果
+        shell: bash
+        run: |
+          if git diff --quiet -- 项目; then
+            echo "没有新的生成结果"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- 项目
+          git commit -m "自动生成短剧 ${{ inputs.episode }}"
+          git push
+
